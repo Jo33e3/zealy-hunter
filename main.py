@@ -80,6 +80,22 @@ def discover():
                 or "self.__next_f" in response.text
             )
 
+                        print("Known listing names:")
+            for term in [
+                "Globe Markets",
+                "HYSEN SI",
+                "Fractionalised World Hub",
+                "Maven Trading",
+                "Injective"
+            ]:
+                index = response.text.lower().find(term.lower())
+                print(f"  {term}: {'FOUND' if index >= 0 else 'not found'}")
+
+            candidates = re.findall(
+                r'/c/[A-Za-z0-9_-]+',
+                response.text
+            )
+            print("Candidate community routes:", sorted(set(candidates))[:20])
             print("Sample links:")
             for sample in parser.links[:8]:
                 print(f"  {sample['href'][:180]}")
