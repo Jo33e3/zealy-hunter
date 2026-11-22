@@ -1,4 +1,3 @@
-
 import os
 import re
 import json
@@ -17,8 +16,9 @@ PAGES = [
 
 STATE_FILE = "seen_projects.json"
 BASE_URL = "https://zealy.io"
+
 HEADERS = {
-    "User-Agent": "Mozilla/5.0 (compatible; ZealyHunter/1.0)"
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0 Safari/537.36"
 }
 
 
@@ -59,18 +59,37 @@ def discover():
     for page in PAGES:
         try:
             response = requests.get(
-                page, headers=HEADERS, timeout=30
+                page,
+                headers=HEADERS,
+                timeout=30
             )
             response.raise_for_status()
 
             parser = LinkParser()
             parser.feed(response.text)
 
+            print("\n--- PAGE DIAGNOSTICS ---")
+            print(f"Page: {page}")
+            print(f"Status: {response.status_code}")
+            print(f"Content type: {response.headers.get('Content-Type')}")
+            print(f"HTML characters: {len(response.text)}")
+            print(f"Anchor links: {len(parser.links)}")
+            print(
+                "Next.js data present:",
+                "__NEXT_DATA__" in response.text
+                or "self.__next_f" in response.text
+            )
+
+            print("Sample links:")
+            for sample in parser.links[:8]:
+                print(f"  {sample['href'][:180]}")
+
             for link in parser.links:
                 url = urljoin(BASE_URL, link["href"])
                 path = urlparse(url).path.strip("/")
 
                 match = re.match(r"c/([^/]+)", path)
+
                 if not match:
                     continue
 
@@ -87,7 +106,7 @@ def discover():
                     "source": page
                 }
 
-            print(f"Checked: {page}")
+            print(f"Communities detected on page: {len(projects)}")
 
         except requests.RequestException as error:
             print(f"Could not check {page}: {error}")
@@ -97,6 +116,7 @@ def discover():
 
 def send_telegram(message):
     url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
+
     response = requests.post(
         url,
         json={
@@ -106,6 +126,7 @@ def send_telegram(message):
         },
         timeout=20
     )
+
     response.raise_for_status()
 
 
@@ -114,23 +135,25 @@ def main():
     projects = discover()
 
     new_projects = [
-        project for slug, project in projects.items()
+        (slug, project)
+        for slug, project in projects.items()
         if slug not in seen
     ]
 
+    print("\n========== SCAN SUMMARY ==========")
     print(f"Communities found: {len(projects)}")
     print(f"New discoveries: {len(new_projects)}")
 
-    if new_projects:
-        for project in new_projects:
-            message = (
-                "🟢 NEW ZEALY DISCOVERY\n\n"
-                f"Project: {project['name']}\n"
-                f"Link: {project['url']}\n"
-                f"Found through: {project['source']}\n\n"
-                "Check the project and its campaign."
-            )
-            send_telegram(message)
+    for slug, project in new_projects:
+        message = (
+            "🟢 NEW ZEALY DISCOVERY\n\n"
+            f"Project: {project['name']}\n"
+            f"Link: {project['url']}\n"
+            f"Source: {project['source']}\n\n"
+            "Check its campaign and opportunities."
+        )
+
+        send_telegram(message)
 
     seen.update(projects.keys())
 
@@ -142,3 +165,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+            
