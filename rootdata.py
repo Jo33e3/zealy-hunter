@@ -139,6 +139,9 @@ def discover_rootdata(seen=None):
                     continue
 
                 key = f"rootdata_{project_id}"
+                
+                if key in seen:
+                    continue
 
                 candidates[key] = {
                     "name": name,
