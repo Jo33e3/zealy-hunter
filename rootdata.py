@@ -79,7 +79,8 @@ def score_project(name, description):
     return score, reasons
 
 
-def discover_rootdata():
+def discover_rootdata(seen=None):
+    seen = set(seen or [])
     api_key = os.environ.get("ROOTDATA_API_KEY")
 
     if not api_key:
