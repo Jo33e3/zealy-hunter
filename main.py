@@ -80,7 +80,7 @@ def discover():
                 or "self.__next_f" in response.text
             )
 
-                        print("Known listing names:")
+            print("Known listing names:")
             for term in [
                 "Globe Markets",
                 "HYSEN SI",
