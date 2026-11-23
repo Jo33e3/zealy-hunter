@@ -1,15 +1,18 @@
+
 name: Zealy Hunter
 
 on:
   workflow_dispatch:
   schedule:
-    - cron: "17 */6 * * *"
+    - cron: "17 * * * *"
+
 permissions:
   contents: write
-  
+
 jobs:
   run-bot:
     runs-on: ubuntu-latest
+
     steps:
       - name: Get repository files
         uses: actions/checkout@v4
@@ -31,13 +34,15 @@ jobs:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           ROOTDATA_API_KEY: ${{ secrets.ROOTDATA_API_KEY }}
-          
+          X_ALERT_FEED_URL: ${{ secrets.X_ALERT_FEED_URL }}
+
       - name: Save discovered projects
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add seen_projects.json
+          git add seen_projects.json seen_x_posts.json
           if ! git diff --cached --quiet; then
-            git commit -m "Update discovered Zealy projects"
+            git commit -m "Update discovered projects and X posts"
             git push
           fi
+          
