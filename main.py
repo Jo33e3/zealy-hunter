@@ -139,12 +139,16 @@ def main():
             message = (
     "⭐ PROMISING WEB3 PROJECT\n\n"
     f"Project: {project['name']}\n"
-    f"Score: {project['score']}/8\n"
+    f"Score: {project['score']}/10\n"
     f"Signals: {', '.join(project['reasons'])}\n"
+    f"Established: {project.get('establishment_date', 'Unknown')}\n"
+    f"Listed investors: {project.get('investor_count', 0)}\n"
+    f"RD Growth Index: {project.get('rd_score', 0)}\n"
+    f"Tags: {', '.join(map(str, project.get('tags', [])))}\n"
     f"Link: {project['url'] or 'No profile link returned'}\n"
     f"Description: {project.get('description', '')[:300]}\n\n"
     "Research this project for early community and ambassador opportunities."
-            
+
             )
         else:
             message = (
