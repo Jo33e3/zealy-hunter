@@ -5,6 +5,7 @@ import json
 import requests
 from urllib.parse import urljoin, urlparse
 from playwright.sync_api import sync_playwright
+from rootdata import discover_rootdata
 
 TOKEN = os.environ["TELEGRAM_BOT_TOKEN"]
 CHAT_ID = os.environ["TELEGRAM_CHAT_ID"]
@@ -27,7 +28,7 @@ def load_seen():
         return []
 
 
-def discover():
+def discover_zealy():
     projects = {}
 
     with sync_playwright() as p:
@@ -46,7 +47,6 @@ def discover():
 
                 page.wait_for_timeout(7000)
 
-                # Scroll to load more community cards
                 for _ in range(3):
                     page.evaluate(
                         "window.scrollTo(0, document.body.scrollHeight)"
@@ -70,7 +70,6 @@ def discover():
 
                     full_url = urljoin(BASE_URL, item["href"])
                     path = urlparse(full_url).path.strip("/")
-
                     match = re.match(r"c/([^/]+)", path)
 
                     if not match:
@@ -87,11 +86,11 @@ def discover():
                     projects[slug] = {
                         "name": name[:100],
                         "url": f"{BASE_URL}/c/{slug}",
-                        "source": url
+                        "source": "Zealy"
                     }
 
             except Exception as error:
-                print(f"Page scan failed: {error}")
+                print(f"Zealy page scan failed: {error}")
 
         browser.close()
 
@@ -116,26 +115,41 @@ def send_telegram(message):
 
 def main():
     seen = set(load_seen())
-    projects = discover()
+
+    projects = discover_zealy()
+
+    try:
+        rootdata_projects = discover_rootdata()
+        projects.update(rootdata_projects)
+    except Exception as error:
+        print(f"RootData scan failed: {error}")
 
     new_projects = [
-        (slug, project)
-        for slug, project in projects.items()
-        if slug not in seen
+        (key, project)
+        for key, project in projects.items()
+        if key not in seen
     ]
 
     print("\n========== SCAN SUMMARY ==========")
-    print(f"Communities found: {len(projects)}")
+    print(f"Total discoveries: {len(projects)}")
     print(f"New discoveries: {len(new_projects)}")
 
-    for slug, project in new_projects:
-        message = (
-            "🟢 NEW ZEALY DISCOVERY\n\n"
-            f"Project: {project['name']}\n"
-            f"Link: {project['url']}\n"
-            f"Source: {project['source']}\n\n"
-            "Check its campaign and opportunities."
-        )
+    for key, project in new_projects:
+        if project["source"] == "RootData":
+            message = (
+                "🔎 NEW ROOTDATA DISCOVERY\n\n"
+                f"Project: {project['name']}\n"
+                f"Link: {project['url'] or 'No profile link returned'}\n"
+                f"Description: {project.get('description', '')[:300]}\n\n"
+                "Research this project and check for community or ambassador opportunities."
+            )
+        else:
+            message = (
+                "🟢 NEW ZEALY DISCOVERY\n\n"
+                f"Project: {project['name']}\n"
+                f"Link: {project['url']}\n"
+                "Check its campaign and opportunities."
+            )
 
         send_telegram(message)
 
@@ -149,4 +163,4 @@ def main():
 
 if __name__ == "__main__":
     main()
-                    
+    
