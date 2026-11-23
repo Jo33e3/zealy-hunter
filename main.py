@@ -119,7 +119,7 @@ def main():
     projects = discover_zealy()
 
     try:
-        rootdata_projects = discover_rootdata()
+        rootdata_projects = discover_rootdata(seen)
         projects.update(rootdata_projects)
     except Exception as error:
         print(f"RootData scan failed: {error}")
