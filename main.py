@@ -137,11 +137,14 @@ def main():
     for key, project in new_projects:
         if project["source"] == "RootData":
             message = (
-                "🔎 NEW ROOTDATA DISCOVERY\n\n"
-                f"Project: {project['name']}\n"
-                f"Link: {project['url'] or 'No profile link returned'}\n"
-                f"Description: {project.get('description', '')[:300]}\n\n"
-                "Research this project and check for community or ambassador opportunities."
+    "⭐ PROMISING WEB3 PROJECT\n\n"
+    f"Project: {project['name']}\n"
+    f"Score: {project['score']}/8\n"
+    f"Signals: {', '.join(project['reasons'])}\n"
+    f"Link: {project['url'] or 'No profile link returned'}\n"
+    f"Description: {project.get('description', '')[:300]}\n\n"
+    "Research this project for early community and ambassador opportunities."
+            
             )
         else:
             message = (
