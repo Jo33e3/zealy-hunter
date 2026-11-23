@@ -30,6 +30,7 @@ jobs:
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          ROOTDATA_API_KEY: ${{ secrets.ROOTDATA_API_KEY }}
           
       - name: Save discovered projects
         run: |
