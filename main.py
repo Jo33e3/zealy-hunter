@@ -1,9 +1,10 @@
+
 import os
 import re
 import json
 import requests
-from html.parser import HTMLParser
 from urllib.parse import urljoin, urlparse
+from playwright.sync_api import sync_playwright
 
 TOKEN = os.environ["TELEGRAM_BOT_TOKEN"]
 CHAT_ID = os.environ["TELEGRAM_CHAT_ID"]
@@ -17,33 +18,6 @@ PAGES = [
 STATE_FILE = "seen_projects.json"
 BASE_URL = "https://zealy.io"
 
-HEADERS = {
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0 Safari/537.36"
-}
-
-
-class LinkParser(HTMLParser):
-    def __init__(self):
-        super().__init__()
-        self.links = []
-        self.current = None
-
-    def handle_starttag(self, tag, attrs):
-        if tag == "a":
-            attrs = dict(attrs)
-            href = attrs.get("href", "")
-            if href:
-                self.current = {"href": href, "text": ""}
-
-    def handle_data(self, data):
-        if self.current:
-            self.current["text"] += data
-
-    def handle_endtag(self, tag):
-        if tag == "a" and self.current:
-            self.links.append(self.current)
-            self.current = None
-
 
 def load_seen():
     try:
@@ -56,76 +30,70 @@ def load_seen():
 def discover():
     projects = {}
 
-    for page in PAGES:
-        try:
-            response = requests.get(
-                page,
-                headers=HEADERS,
-                timeout=30
-            )
-            response.raise_for_status()
+    with sync_playwright() as p:
+        browser = p.chromium.launch(headless=True)
+        page = browser.new_page()
 
-            parser = LinkParser()
-            parser.feed(response.text)
+        for url in PAGES:
+            try:
+                print(f"\nChecking: {url}")
 
-            print("\n--- PAGE DIAGNOSTICS ---")
-            print(f"Page: {page}")
-            print(f"Status: {response.status_code}")
-            print(f"Content type: {response.headers.get('Content-Type')}")
-            print(f"HTML characters: {len(response.text)}")
-            print(f"Anchor links: {len(parser.links)}")
-            print(
-                "Next.js data present:",
-                "__NEXT_DATA__" in response.text
-                or "self.__next_f" in response.text
-            )
+                page.goto(
+                    url,
+                    wait_until="domcontentloaded",
+                    timeout=60000
+                )
 
-            print("Known listing names:")
-            for term in [
-                "Globe Markets",
-                "HYSEN SI",
-                "Fractionalised World Hub",
-                "Maven Trading",
-                "Injective"
-            ]:
-                index = response.text.lower().find(term.lower())
-                print(f"  {term}: {'FOUND' if index >= 0 else 'not found'}")
+                page.wait_for_timeout(7000)
 
-            candidates = re.findall(
-                r'/c/[A-Za-z0-9_-]+',
-                response.text
-            )
-            print("Candidate community routes:", sorted(set(candidates))[:20])
-            print("Sample links:")
-            for sample in parser.links[:8]:
-                print(f"  {sample['href'][:180]}")
+                # Scroll to load more community cards
+                for _ in range(3):
+                    page.evaluate(
+                        "window.scrollTo(0, document.body.scrollHeight)"
+                    )
+                    page.wait_for_timeout(1500)
 
-            for link in parser.links:
-                url = urljoin(BASE_URL, link["href"])
-                path = urlparse(url).path.strip("/")
+                anchors = page.locator(
+                    'a[href*="/c/"]'
+                ).evaluate_all("""
+                    elements => elements.map(a => ({
+                        href: a.getAttribute("href"),
+                        name: (a.innerText || "").trim()
+                    }))
+                """)
 
-                match = re.match(r"c/([^/]+)", path)
+                print(f"Community links detected: {len(anchors)}")
 
-                if not match:
-                    continue
+                for item in anchors:
+                    if not item["href"]:
+                        continue
 
-                slug = match.group(1)
+                    full_url = urljoin(BASE_URL, item["href"])
+                    path = urlparse(full_url).path.strip("/")
 
-                if slug in ("login", "signup", "create"):
-                    continue
+                    match = re.match(r"c/([^/]+)", path)
 
-                name = link["text"].strip() or slug
+                    if not match:
+                        continue
 
-                projects[slug] = {
-                    "name": name,
-                    "url": f"{BASE_URL}/c/{slug}",
-                    "source": page
-                }
+                    slug = match.group(1)
 
-            print(f"Communities detected on page: {len(projects)}")
+                    if slug in ("login", "signup", "create"):
+                        continue
 
-        except requests.RequestException as error:
-            print(f"Could not check {page}: {error}")
+                    name = item["name"] or slug
+                    name = " ".join(name.split())
+
+                    projects[slug] = {
+                        "name": name[:100],
+                        "url": f"{BASE_URL}/c/{slug}",
+                        "source": url
+                    }
+
+            except Exception as error:
+                print(f"Page scan failed: {error}")
+
+        browser.close()
 
     return projects
 
@@ -181,4 +149,4 @@ def main():
 
 if __name__ == "__main__":
     main()
-            
+                    
