@@ -33,10 +33,9 @@ jobs:
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-          ROOTDATA_API_KEY: ${{ secrets.ROOTDATA_API_KEY }}
           X_ALERT_FEED_URL: ${{ secrets.X_ALERT_FEED_URL }}
 
-      - name: Save discovered projects
+      - name: Save discovered Zealy communities
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
