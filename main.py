@@ -6,7 +6,6 @@ import requests
 import xml.etree.ElementTree as ET
 from urllib.parse import urljoin, urlparse
 from playwright.sync_api import sync_playwright
-from rootdata import discover_rootdata
 
 TOKEN = os.environ["TELEGRAM_BOT_TOKEN"]
 CHAT_ID = os.environ["TELEGRAM_CHAT_ID"]
@@ -204,11 +203,6 @@ def main():
 
     projects = discover_zealy()
 
-    try:
-        rootdata_projects = discover_rootdata(seen)
-        projects.update(rootdata_projects)
-    except Exception as error:
-        print(f"RootData scan failed: {error}")
 
     new_projects = [
         (key, project)
@@ -221,19 +215,11 @@ def main():
     print(f"New discoveries: {len(new_projects)}")
 
     for key, project in new_projects:
-        if project["source"] == "RootData":
-            message = (
-                "⭐ PROMISING WEB3 PROJECT\n\n"
-                f"Project: {project['name']}\n"
-                f"Score: {project['score']}/10\n"
-                f"Signals: {', '.join(project['reasons'])}\n"
-                f"Established: {project.get('establishment_date', 'Unknown')}\n"
-                f"Listed investors: {project.get('investor_count', 0)}\n"
-                f"RD Growth Index: {project.get('rd_score', 0)}\n"
-                f"Tags: {', '.join(map(str, project.get('tags', [])))}\n"
-                f"Link: {project['url'] or 'No profile link returned'}\n"
-                f"Description: {project.get('description', '')[:300]}\n\n"
-                "Research this project for early community and ambassador opportunities."
+                    message = (
+            "⭐ PROMISING ZEALY PROJECT\n\n"
+            f"Community: {project['name']}\n"
+            f"Link: {project['url']}\n\n"
+            "New discovery. Check its quests and opportunities."
             )
         else:
             message = (
