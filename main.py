@@ -1,3 +1,4 @@
+
 import os
 import re
 import json
@@ -21,14 +22,28 @@ X_STATE_FILE = "seen_x_posts.json"
 BASE_URL = "https://zealy.io"
 
 COMMUNITY_PATTERN = re.compile(
-    r"(?:https?://)?(?:www\.)?zealy\.io/c/([A-Za-z0-9_-]+)",
+    r"https?://(?:www\.)?zealy\.io/c/([A-Za-z0-9_-]+)",
     re.IGNORECASE
 )
 
-ZEALY_PATTERN = re.compile(
-    r"\bzealy\b|zealy\.io",
-    re.IGNORECASE
-)
+RESERVED_SLUGS = {
+    "login", "signup", "create", "explore",
+    "home", "about", "pricing", "blog"
+}
+
+GENERIC_PHRASES = [
+    "make a living from web3",
+    "join the next big thing",
+    "the future of communities",
+    "what is zealy",
+    "how to use zealy",
+    "getting started with zealy",
+    "zealy platform",
+    "zealy transforming",
+    "zealy guide",
+    "zealy tutorial",
+    "welcome to zealy",
+]
 
 
 def load_seen(path):
@@ -40,6 +55,80 @@ def load_seen(path):
         return set()
 
 
+def clean_text(value):
+    value = html.unescape(value or "")
+    value = re.sub(r"<[^>]+>", " ", value)
+    return " ".join(value.split())
+
+
+def is_valid_community_url(url):
+    try:
+        parsed = urlparse(url)
+
+        if parsed.netloc.lower() not in (
+            "zealy.io", "www.zealy.io"
+        ):
+            return None
+
+        match = re.fullmatch(
+            r"/c/([A-Za-z0-9_-]+)/?",
+            parsed.path,
+            re.IGNORECASE
+        )
+
+        if not match:
+            return None
+
+        slug = match.group(1)
+
+        if slug.lower() in RESERVED_SLUGS:
+            return None
+
+        return slug
+
+    except Exception:
+        return None
+
+
+def is_specific_zealy_announcement(title, summary, source):
+    text = clean_text(title + " " + summary).lower()
+
+    if "zealy" not in text:
+        return False
+
+    # Reject generic Zealy advertisements and guides.
+    if any(phrase in text for phrase in GENERIC_PHRASES):
+        return False
+
+    # Reject pages hosted on Zealy itself unless they
+    # are direct community URLs.
+    try:
+        host = urlparse(source).netloc.lower()
+        path = urlparse(source).path.lower()
+
+        if host in ("zealy.io", "www.zealy.io"):
+            if not re.fullmatch(r"/c/[^/]+/?", path):
+                return False
+    except Exception:
+        pass
+
+    # Require wording that connects Zealy to a specific
+    # project, community, campaign or quest.
+    specific_patterns = [
+        r"our\s+zealy",
+        r"zealy\s+(?:community|campaign|quests|sprint)\s+(?:for|by|of)",
+        r"(?:join|complete|check out|visit)\s+.{2,100}\s+on\s+zealy",
+        r".{2,100}\s+on\s+zealy",
+        r"zealy\s+(?:for|with)\s+.{2,100}",
+        r"join\s+our\s+community\s+on\s+zealy",
+    ]
+
+    return any(
+        re.search(pattern, text)
+        for pattern in specific_patterns
+    )
+
+
 def discover_zealy():
     projects = {}
 
@@ -49,13 +138,14 @@ def discover_zealy():
 
         for url in PAGES:
             try:
-                print(f"\nChecking Zealy: {url}")
+                print(f"Checking: {url}")
 
                 page.goto(
                     url,
                     wait_until="domcontentloaded",
                     timeout=60000
                 )
+
                 page.wait_for_timeout(7000)
 
                 for _ in range(3):
@@ -68,42 +158,21 @@ def discover_zealy():
                     'a[href*="/c/"]'
                 ).evaluate_all("""
                     elements => elements.map(a => ({
-                        href: a.getAttribute("href"),
+                        href: a.href,
                         name: (a.innerText || "").trim()
                     }))
                 """)
 
-                print(f"Zealy links found: {len(anchors)}")
-
                 for item in anchors:
-                    if not item["href"]:
-                        continue
-
-                    full_url = urljoin(BASE_URL, item["href"])
-                    parsed = urlparse(full_url)
-
-                    if parsed.netloc.lower() not in (
-                        "zealy.io", "www.zealy.io"
-                    ):
-                        continue
-
-                    match = re.match(
-                        r"/c/([^/]+)",
-                        parsed.path
+                    slug = is_valid_community_url(
+                        item.get("href", "")
                     )
 
-                    if not match:
-                        continue
-
-                    slug = match.group(1)
-
-                    if slug.lower() in (
-                        "login", "signup", "create"
-                    ):
+                    if not slug:
                         continue
 
                     name = " ".join(
-                        (item["name"] or slug).split()
+                        (item.get("name") or slug).split()
                     )
 
                     projects[slug] = {
@@ -112,8 +181,10 @@ def discover_zealy():
                         "source": "Zealy"
                     }
 
+                print(f"Valid community links: {len(projects)}")
+
             except Exception as error:
-                print(f"Zealy page scan failed: {error}")
+                print(f"Zealy scan failed: {error}")
 
         browser.close()
 
@@ -130,12 +201,8 @@ def scan_x_alert_feeds():
     ]
 
     seen_posts = load_seen(X_STATE_FILE)
-    discovered_projects = {}
-    project_leads = []
-
-    if not feed_urls:
-        print("No RSS feeds configured.")
-        return discovered_projects, project_leads, seen_posts
+    projects = {}
+    leads = []
 
     for feed_url in feed_urls:
         try:
@@ -146,8 +213,8 @@ def scan_x_alert_feeds():
                 },
                 timeout=30
             )
-            response.raise_for_status()
 
+            response.raise_for_status()
             root = ET.fromstring(response.content)
 
             entries = [
@@ -165,7 +232,6 @@ def scan_x_alert_feeds():
                 fields = {}
                 links = []
 
-                # Collect text and links from the feed entry
                 for element in entry.iter():
                     tag = element.tag.split("}")[-1]
                     value = "".join(element.itertext()).strip()
@@ -174,22 +240,14 @@ def scan_x_alert_feeds():
                         fields[tag] = value
 
                     href = element.attrib.get("href")
+
                     if href:
                         links.append(href)
 
-                post_id = (
-                    fields.get("id")
-                    or fields.get("guid")
-                    or fields.get("link")
-                    or fields.get("title")
-                )
-
-                title = fields.get("title") or "Zealy discovery"
-
+                title = fields.get("title", "")
                 summary = (
                     fields.get("summary")
                     or fields.get("description")
-                    or fields.get("encoded")
                     or fields.get("content")
                     or ""
                 )
@@ -197,6 +255,13 @@ def scan_x_alert_feeds():
                 post_link = (
                     fields.get("link")
                     or (links[0] if links else "")
+                )
+
+                post_id = (
+                    fields.get("id")
+                    or fields.get("guid")
+                    or post_link
+                    or title
                 )
 
                 searchable_text = html.unescape(
@@ -208,67 +273,48 @@ def scan_x_alert_feeds():
                     ])
                 )
 
-                # Ignore anything that does not mention Zealy
-                # or contain a direct Zealy community link.
-                direct_matches = list(
-                    COMMUNITY_PATTERN.finditer(searchable_text)
-                )
+                # First look for real community links.
+                found_slugs = set()
 
-                mentions_zealy = bool(
-                    ZEALY_PATTERN.search(searchable_text)
-                )
-
-                if not direct_matches and not mentions_zealy:
-                    continue
-
-                if not post_id:
-                    post_id = post_link or title
-
-                if post_id in seen_posts:
-                    continue
-
-                seen_posts.add(post_id)
-
-                # Direct Zealy community links
-                for match in direct_matches:
+                for match in COMMUNITY_PATTERN.finditer(
+                    searchable_text
+                ):
                     slug = match.group(1)
 
-                    if slug.lower() in (
-                        "login", "signup", "create"
+                    if slug.lower() not in RESERVED_SLUGS:
+                        found_slugs.add(slug)
+
+                for slug in found_slugs:
+                    projects[slug] = {
+                        "name": slug.replace("-", " ").title(),
+                        "url": f"{BASE_URL}/c/{slug}",
+                        "source": "RSS discovery",
+                        "source_link": post_link
+                    }
+
+                # If there is no community link, only accept
+                # a specific project-related Zealy announcement.
+                if not found_slugs:
+                    if is_specific_zealy_announcement(
+                        title, summary, post_link
                     ):
-                        continue
+                        if post_id not in seen_posts:
+                            leads.append({
+                                "id": post_id,
+                                "title": clean_text(title)[:200],
+                                "summary": clean_text(summary)[:500],
+                                "link": post_link
+                            })
 
-                    if slug not in discovered_projects:
-                        discovered_projects[slug] = {
-                            "name": slug.replace("-", " ").title(),
-                            "url": f"{BASE_URL}/c/{slug}",
-                            "source": "Google/Bing/RSS discovery",
-                            "source_link": post_link
-                        }
+                if post_id:
+                    seen_posts.add(post_id)
 
-                # Zealy mentioned, but no community link found
-                if not direct_matches:
-                    clean_summary = re.sub(
-                        r"<[^>]+>",
-                        " ",
-                        html.unescape(summary)
-                    )
-
-                    project_leads.append({
-                        "id": post_id,
-                        "title": title[:200],
-                        "summary": " ".join(
-                            clean_summary.split()
-                        )[:500],
-                        "link": post_link
-                    })
-
-            print("Checked RSS feed successfully.")
+            print("RSS feed checked.")
 
         except Exception as error:
-            print(f"RSS feed scan failed: {error}")
+            print(f"RSS feed failed: {error}")
 
-    return discovered_projects, project_leads, seen_posts
+    return projects, leads, seen_posts
 
 
 def send_telegram(message):
@@ -292,15 +338,10 @@ def main():
 
     print("\n========== ZEALY HUNTER ==========")
 
-    # Scan Zealy's public pages
     projects = discover_zealy()
 
-    # Scan Google and Bing RSS results
-    feed_projects, project_leads, seen_x_posts = (
-        scan_x_alert_feeds()
-    )
+    feed_projects, leads, seen_posts = scan_x_alert_feeds()
 
-    # Combine direct community discoveries
     projects.update(feed_projects)
 
     new_projects = [
@@ -311,9 +352,8 @@ def main():
 
     print(f"Communities found: {len(projects)}")
     print(f"New communities: {len(new_projects)}")
-    print(f"Zealy mentions without links: {len(project_leads)}")
+    print(f"Specific Zealy announcements: {len(leads)}")
 
-    # Send direct community discoveries
     for slug, project in new_projects:
         message = (
             "⭐ PROMISING ZEALY PROJECT\n\n"
@@ -327,19 +367,14 @@ def main():
                 f"Original source: {project['source_link']}\n"
             )
 
-        message += "\nNew Zealy community discovered."
-
         try:
             send_telegram(message)
+            seen.add(slug)
             print(f"Community alert sent: {slug}")
         except Exception as error:
             print(f"Telegram alert failed: {error}")
-            continue
 
-        seen.add(slug)
-
-    # Send Zealy mentions without direct community links
-    for lead in project_leads:
+    for lead in leads:
         message = (
             "⭐ PROMISING ZEALY PROJECT\n\n"
             f"Announcement: {lead['title']}\n\n"
@@ -350,20 +385,19 @@ def main():
 
         try:
             send_telegram(message)
-            print(f"Zealy lead alert sent: {lead['title']}")
+            print(f"Zealy announcement sent: {lead['title']}")
         except Exception as error:
-            print(f"Telegram lead alert failed: {error}")
+            print(f"Telegram announcement failed: {error}")
 
-    # Save discovery history
     with open(STATE_FILE, "w", encoding="utf-8") as file:
         json.dump(sorted(seen), file, indent=2)
 
     with open(X_STATE_FILE, "w", encoding="utf-8") as file:
-        json.dump(sorted(seen_x_posts), file, indent=2)
+        json.dump(sorted(seen_posts), file, indent=2)
 
-    print("\nZealy Hunter scan completed.")
+    print("Zealy Hunter scan completed.")
 
 
 if __name__ == "__main__":
     main()
-                
+                        
