@@ -200,9 +200,7 @@ def send_telegram(message):
 
 def main():
     seen = load_seen(STATE_FILE)
-
     projects = discover_zealy()
-
 
     new_projects = [
         (key, project)
@@ -210,25 +208,17 @@ def main():
         if key not in seen
     ]
 
-    print("\n========== SCAN SUMMARY ==========")
+    print("\n========== ZEALY SCAN SUMMARY ==========")
     print(f"Total discoveries: {len(projects)}")
     print(f"New discoveries: {len(new_projects)}")
 
     for key, project in new_projects:
-                    message = (
+        message = (
             "⭐ PROMISING ZEALY PROJECT\n\n"
             f"Community: {project['name']}\n"
             f"Link: {project['url']}\n\n"
             "New discovery. Check its quests and opportunities."
-            )
-        else:
-            message = (
-                "🟢 NEW ZEALY DISCOVERY\n\n"
-                f"Project: {project['name']}\n"
-                f"Link: {project['url']}\n"
-                "Check its campaign and opportunities."
-            )
-
+        )
         send_telegram(message)
 
     seen.update(projects.keys())
@@ -242,19 +232,19 @@ def main():
 
     for post in x_posts:
         message = (
-            "🔎 NEW ZEALY-RELATED X POST\n\n"
+            "🔎 NEW ZEALY-RELATED POST\n\n"
             f"{post['title']}\n\n"
             f"{post['summary']}\n\n"
             f"Open post/search result: {post['link']}"
         )
-
         send_telegram(message)
 
     with open(X_STATE_FILE, "w", encoding="utf-8") as file:
         json.dump(sorted(seen_x_posts), file, indent=2)
 
-    print("Discovery scan completed.")
+    print("Zealy discovery scan completed.")
 
 
 if __name__ == "__main__":
     main()
+    
